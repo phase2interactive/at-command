@@ -28,36 +28,18 @@ The translated command is placed in an editable prompt — you review, edit, or 
 ## Installation
 
 ```bash
-# Clone and install
-git clone https://github.com/jzumwalt/at-command.git
-cd at-command
-uv sync
-uv pip install -e .
+uv tool install at-cmd
 ```
 
-### Shell Setup
+Then run setup to add shell integration:
 
-Add one of the following to your shell config:
-
-**Bash** (`~/.bashrc`):
 ```bash
-eval "$(at-cmd init bash)"
+at-cmd setup
 ```
 
-**Zsh** (`~/.zshrc`):
-```bash
-eval "$(at-cmd init zsh)"
-```
+This auto-detects your shell, shows you what it will add, and appends the integration line to your shell config (e.g. `~/.zshrc`, `~/.bashrc`, `~/.config/fish/config.fish`). Use `-y` to skip the confirmation prompt.
 
-**Fish** (`~/.config/fish/conf.d/at-cmd.fish`):
-```fish
-at-cmd init fish | source
-```
-
-**PowerShell** (`$PROFILE`):
-```powershell
-Invoke-Expression (at-cmd init powershell)
-```
+Restart your shell or source your config file to activate.
 
 ## Usage
 
@@ -104,7 +86,7 @@ at-cmd --json <request>             # JSON output
 at-cmd --shell bash <request>       # override shell detection
 at-cmd --backend ollama <request>   # override backend
 at-cmd --model gpt-4o <request>     # override model
-at-cmd init <shell>                 # print shell integration script
+at-cmd setup                        # set up shell integration
 at-cmd config                       # open interactive config TUI
 ```
 
@@ -177,7 +159,8 @@ at-cmd config
 
 ```bash
 just install    # install dependencies
-just dev        # editable install
+just tool       # install as uv tool (available globally)
+just dev        # editable install (for development)
 just test       # run tests
 just testv      # run tests (verbose)
 just lint       # ruff check

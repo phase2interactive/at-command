@@ -8,7 +8,11 @@ default:
 install:
     uv sync
 
-# Install in editable mode
+# Install as a uv tool (available globally)
+tool:
+    uv tool install . --force --reinstall
+
+# Install in editable mode (for development)
 dev:
     uv pip install -e .
 

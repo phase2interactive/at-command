@@ -1,8 +1,12 @@
 """CLI entry point for at-cmd."""
 
 import json
+import os
 import readline
+import shutil
+import subprocess
 import sys
+from pathlib import Path
 
 import click
 
@@ -12,10 +16,64 @@ from at_cmd.llm import BackendError, build_system_prompt, get_backend
 from at_cmd.sanitize import SanitizeError, sanitize_response
 
 
+def _shell_integration_installed() -> bool:
+    """Check if the shell integration function exists in the current shell.
+
+    Returns:
+        bool: True if the _at_cmd_submit function is defined in the shell.
+    """
+    shell_env = detect_context().shell
+
+    if shell_env == "fish":
+        cmd = ["fish", "-c", "functions -q _at_cmd_submit"]
+    elif shell_env == "zsh":
+        cmd = ["zsh", "-ic", "whence -w _at_cmd_submit"]
+    elif shell_env == "bash":
+        cmd = ["bash", "-ic", "type _at_cmd_submit"]
+    else:
+        return False
+
+    shell_bin = cmd[0]
+    if not shutil.which(shell_bin):
+        return False
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=5)
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def _show_status() -> None:
+    """Show at-cmd status and setup guidance."""
+    ctx = detect_context()
+    installed = _shell_integration_installed()
+
+    click.echo("at-cmd — natural language to shell commands\n")
+
+    if installed:
+        click.echo("  ✓ Shell integration is active.\n")
+        click.echo("  Usage:")
+        click.echo("    @ find large jpg files      translate and edit")
+        click.echo("    @ list running docker containers")
+        click.echo(f"\n  Shell: {ctx.shell}  |  OS: {ctx.os_name}")
+    else:
+        click.echo("  ✗ Shell integration is not installed.\n")
+        click.echo("  Run the following to set it up:\n")
+        click.echo("    at-cmd setup")
+
+    click.echo()
+
+
 class _DefaultToTranslate(click.Group):
     """Click group that falls through to translate for unknown subcommands."""
 
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        # No arguments at all — show status instead of help.
+        if not args:
+            _show_status()
+            ctx.exit(0)
+
         # Find the first non-flag argument to decide routing.
         first_word = next((a for a in args if not a.startswith("-")), None)
         if first_word and first_word not in self.commands:
@@ -93,22 +151,121 @@ def translate_cmd(
         subprocess.run(final_cmd, shell=True)
 
 
-# ── init ──────────────────────────────────────────────────────────
+# ── setup / init ──────────────────────────────────────────────────
 
 
-@main.command("init")
-@click.argument("shell", type=click.Choice(["bash", "zsh", "fish", "powershell"]))
-def init_cmd(shell: str) -> None:
-    """Print shell init script to stdout.
+_SUPPORTED_SHELLS = ("bash", "zsh", "fish", "powershell")
 
-    \b
-    Setup:
-      bash/zsh:    eval "$(at-cmd init bash)"
-      fish:        at-cmd init fish | source
-      powershell:  Invoke-Expression (at-cmd init powershell)
+_INIT_MARKER = "# at-cmd shell integration"
+
+_RC_FILES: dict[str, str] = {
+    "bash": "~/.bashrc",
+    "zsh": "~/.zshrc",
+    "fish": "~/.config/fish/config.fish",
+    "powershell": "",  # resolved at runtime via $PROFILE
+}
+
+_EVAL_LINES: dict[str, str] = {
+    "bash": 'eval "$(at-cmd init bash)"',
+    "zsh": 'eval "$(at-cmd init zsh)"',
+    "fish": "at-cmd init fish | source",
+    "powershell": "Invoke-Expression (at-cmd init powershell)",
+}
+
+
+def _get_rc_path(shell: str) -> Path:
+    """Resolve the RC file path for a shell.
+
+    Args:
+        shell: Shell name.
+
+    Returns:
+        Path: Absolute path to the shell config file.
     """
+    if shell == "powershell":
+        ps_profile = os.environ.get("PROFILE", "")
+        if ps_profile:
+            return Path(ps_profile).expanduser()
+        # Reason: common default location when $PROFILE is unset
+        return Path("~/.config/powershell/Microsoft.PowerShell_profile.ps1").expanduser()
+    return Path(_RC_FILES[shell]).expanduser()
+
+
+def _rc_has_integration(rc_path: Path) -> bool:
+    """Check if the RC file already contains the at-cmd integration line.
+
+    Args:
+        rc_path: Path to the shell config file.
+
+    Returns:
+        bool: True if the marker is already present.
+    """
+    if not rc_path.exists():
+        return False
+    return _INIT_MARKER in rc_path.read_text()
+
+
+@main.command("setup")
+@click.option("-y", "--yes", is_flag=True, help="Skip confirmation prompt.")
+def setup_cmd(yes: bool) -> None:
+    """Set up shell integration.
+
+    Detects your shell and adds the at-cmd integration to your shell config.
+    """
+    detected = detect_context().shell
+    if detected not in _SUPPORTED_SHELLS:
+        click.echo(
+            f"Error: could not detect a supported shell (got '{detected}').\n"
+            f"Supported: {', '.join(_SUPPORTED_SHELLS)}",
+            err=True,
+        )
+        sys.exit(1)
+
+    rc_path = _get_rc_path(detected)
+    eval_line = _EVAL_LINES[detected]
+
+    click.echo(f"  Detected shell: {detected}")
+    click.echo(f"  Config file:    {rc_path}")
+
+    if _rc_has_integration(rc_path):
+        click.echo(f"\n  Shell integration is already installed.")
+        click.echo(f"  To reinstall, remove the '{_INIT_MARKER}' line from {rc_path} and run again.")
+        return
+
+    click.echo(f"\n  This will add the following line to {rc_path}:\n")
+    click.echo(f"    {eval_line}")
+
+    if not yes and not click.confirm(f"\n  Proceed?"):
+        sys.exit(0)
+
+    # Ensure parent directories exist (e.g. ~/.config/fish/).
+    rc_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Append the eval line with the marker.
+    with open(rc_path, "a") as f:
+        f.write(f"\n{_INIT_MARKER}\n{eval_line}\n")
+
+    click.echo(f"\n  Done! Restart your shell or run:\n")
+    if detected == "fish":
+        click.echo(f"    source {rc_path}")
+    elif detected == "powershell":
+        click.echo(f"    . $PROFILE")
+    else:
+        click.echo(f"    source {rc_path}")
+
+
+@main.command("init", hidden=True)
+@click.argument("shell")
+def init_cmd(shell: str) -> None:
+    """Print raw shell init script to stdout (used by eval line)."""
     from at_cmd.init import generate
 
+    if shell not in _SUPPORTED_SHELLS:
+        click.echo(
+            f"Error: invalid shell '{shell}'. Choose from: {', '.join(_SUPPORTED_SHELLS)}",
+            err=True,
+        )
+        sys.exit(1)
     click.echo(generate(shell))
 
 

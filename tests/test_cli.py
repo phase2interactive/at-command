@@ -39,11 +39,27 @@ class TestCli:
         else:
             assert False, f"No JSON found in output: {result.output}"
 
-    def test_missing_request_shows_error(self):
-        """Failure case: no request arguments provided."""
+    def test_bare_invocation_shows_status(self, monkeypatch):
+        """Expected use: bare at-cmd shows status with setup guidance."""
+        monkeypatch.setattr(
+            "at_cmd.cli._shell_integration_installed", lambda: False
+        )
         runner = CliRunner()
         result = runner.invoke(main, [])
-        assert result.exit_code != 0
+        assert result.exit_code == 0
+        assert "at-cmd" in result.output
+        assert "Shell integration is not installed" in result.output
+
+    def test_bare_invocation_shows_active_when_installed(self, monkeypatch):
+        """Expected use: bare at-cmd shows active status when integration exists."""
+        monkeypatch.setattr(
+            "at_cmd.cli._shell_integration_installed", lambda: True
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, [])
+        assert result.exit_code == 0
+        assert "Shell integration is active" in result.output
+        assert "@ find large jpg files" in result.output
 
     def test_backend_error_shows_message(self, monkeypatch):
         """Failure case: backend not available."""

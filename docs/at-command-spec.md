@@ -167,9 +167,4 @@ Implementations SHOULD make the backend configurable via environment variable or
 
 ## Future Considerations
 
-- **Ghost text rendering**: True inline dim/gray preview text (requires shell-specific hooks or PTY wrapping)
-- **Streaming**: Show the command as it generates, character by character
-- **Multi-candidate**: Show 2-3 alternatives and let the user pick (via completion pager or fzf)
-- **Context awareness**: Include recent command history or `pwd` contents for smarter suggestions
-- **Cost controls**: Token/request limits, local model fallback
-- **Caching**: Cache identical requests to avoid redundant LLM calls
+See [docs/backlog/](backlog/) for detailed feature designs.

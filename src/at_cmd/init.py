@@ -67,9 +67,7 @@ function _at_cmd_inline
     set -l result (at-cmd --json --shell fish (string replace -r '^@\\s*' '' -- "$buf"))
     if test $status -ne 0; commandline -r "$buf"; commandline -f repaint; return 1; end
     set -l cmd (echo $result | jq -r '.command')
-    set -l desc (echo $result | jq -r '.description')
     commandline -r "$cmd"; commandline -f end-of-line; commandline -f repaint
-    test -n "$desc" && printf '\\n  \\e[2m# %s\\e[0m' "$desc" >&2
 end"""
 
     undo = """\

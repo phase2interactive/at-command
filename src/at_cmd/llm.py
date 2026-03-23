@@ -34,10 +34,11 @@ def build_system_prompt(ctx: ShellContext) -> str:
         f"You are a shell command translator for {ctx.shell} on {ctx.os_name}.\n"
         f"Working directory: {ctx.cwd}\n"
         f"The user will describe what they want in natural language.\n"
-        f"Return EXACTLY two lines:\n"
-        f"Line 1: The {ctx.shell} command (no backticks, no markdown, one line, "
-        f"use appropriate chaining for {ctx.shell})\n"
-        f"Line 2: A brief description (10 words max) of what the command does"
+        f'Return your response as a JSON object with exactly these fields:\n'
+        f'{{"command": "<the {ctx.shell} command, single line, no backticks or markdown, '
+        f'use appropriate chaining for {ctx.shell}>", '
+        f'"description": "<brief description, 10 words max>"}}\n'
+        f"Return ONLY the JSON object. No markdown, no explanation."
     )
 
 

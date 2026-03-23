@@ -19,7 +19,7 @@ class TestBuildSystemPrompt:
         assert "fish" in prompt
         assert "Linux" in prompt
         assert "/home/user" in prompt
-        assert "two lines" in prompt.lower() or "EXACTLY two lines" in prompt
+        assert "json" in prompt.lower()
 
     def test_different_shell_context(self):
         """Edge case: Windows + PowerShell context."""

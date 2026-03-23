@@ -13,7 +13,7 @@ import click
 from at_cmd.config import load_config
 from at_cmd.detect import detect_context
 from at_cmd.llm import BackendError, build_system_prompt, get_backend
-from at_cmd.sanitize import SanitizeError, sanitize_response
+from at_cmd.sanitize import SanitizeError, parse_response
 
 
 def _shell_integration_installed() -> bool:
@@ -123,10 +123,12 @@ def translate_cmd(
         with Spinner("translating"):
             system_prompt = build_system_prompt(shell_ctx)
             raw = backend_fn(system_prompt, user_prompt)
-            command, description = sanitize_response(raw)
+            response = parse_response(raw)
     except (BackendError, SanitizeError) as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
+
+    command, description = response.command, response.description
 
     if json_mode:
         click.echo(json.dumps({"command": command, "description": description}))

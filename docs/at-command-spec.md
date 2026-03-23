@@ -50,8 +50,7 @@ The user types `@ <request>` and presses a keybinding (e.g., Alt+Space, Ctrl+Spa
 1. Replaces the command line buffer contents with a loading indicator
 2. Calls the LLM backend
 3. Replaces the buffer with the translated command (fully editable, cursor at end)
-4. Displays the description as dim text below the command line
-5. The user can:
+4. The user can:
    - **Enter** — execute the command
    - **Edit** — modify the command inline
    - **Undo** (Ctrl+Z) — restore the original `@ <request>` text
@@ -61,7 +60,6 @@ The user types `@ <request>` and presses a keybinding (e.g., Alt+Space, Ctrl+Spa
 $ @ find large jpg files        ← user types this
   [Alt+Space]
 $ find . -name '*.jpg' -size +5M   ← buffer replaced, editable
-  # Find JPG files larger than 5MB   ← dim description below
 ```
 
 ## LLM Request Contract
@@ -113,7 +111,7 @@ Line 2: A brief description (10 words max) of what the command does
 | F2 | The translated command MUST be presented for review before execution |
 | F3 | The user MUST be able to edit the command before executing |
 | F4 | The user MUST be able to cancel without executing |
-| F5 | A brief description MUST be shown alongside the command |
+| F5 | A brief description MUST be shown alongside the command in submit mode. In inline mode, a description SHOULD be shown if the shell supports it |
 | F6 | The system MUST detect the current shell and OS automatically |
 | F7 | The system MUST show a loading indicator during LLM calls |
 | F8 | The inline mode MUST support undo back to the original input |

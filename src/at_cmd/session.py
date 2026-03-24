@@ -1,6 +1,5 @@
 """Session context management for per-directory LLM conversation persistence."""
 
-import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
@@ -49,9 +48,9 @@ def _default_session_id(cwd: str) -> str:
         cwd: Working directory path.
 
     Returns:
-        str: Session ID like 'at-cmd-a1b2c3d4e5f6'.
+        str: Session ID as a UUID-5 string (required by Claude CLI --resume).
     """
-    return "at-cmd-" + hashlib.sha256(cwd.encode()).hexdigest()[:12]
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"at-cmd:{cwd}"))
 
 
 def get_or_create_session(cwd: str) -> str:
@@ -87,7 +86,7 @@ def new_session(cwd: str) -> str:
         str: New session ID.
     """
     sessions = _load_sessions()
-    session_id = "at-cmd-" + uuid.uuid4().hex[:12]
+    session_id = str(uuid.uuid4())
     sessions[cwd] = {
         "session_id": session_id,
         "created": datetime.now(timezone.utc).isoformat(),

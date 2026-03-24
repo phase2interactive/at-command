@@ -38,18 +38,22 @@ class TestSessionIDGeneration:
         id2 = get_or_create_session("/home/dev/project-b")
         assert id1 != id2
 
-    def test_session_id_format(self):
-        """Session ID has the expected prefix and length."""
+    def test_session_id_is_valid_uuid(self):
+        """Session ID must be a valid UUID (required by Claude CLI --resume)."""
+        import uuid
+
         sid = get_or_create_session("/home/dev/project")
-        assert sid.startswith("at-cmd-")
-        assert len(sid) == 7 + 12  # "at-cmd-" + 12 hex chars
+        parsed = uuid.UUID(sid)  # raises ValueError if not valid
+        assert str(parsed) == sid
 
     def test_new_session_different_from_default(self):
         """new_session() returns a different ID than get_or_create_session()."""
+        import uuid
+
         default_id = get_or_create_session("/home/dev/project")
         fresh_id = new_session("/home/dev/project")
         assert fresh_id != default_id
-        assert fresh_id.startswith("at-cmd-")
+        uuid.UUID(fresh_id)  # must be valid UUID
 
 
 # ── Storage ───────────────────────────────────────────────────────
@@ -114,7 +118,7 @@ class TestSessionInfo:
         increment_interactions("/home/dev/project")
         info = session_info("/home/dev/project")
         assert info is not None
-        assert "at-cmd-" in info
+        assert "Session:" in info
         assert "1 interactions" in info
         assert "started" in info
 

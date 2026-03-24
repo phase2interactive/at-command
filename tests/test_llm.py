@@ -105,3 +105,61 @@ class TestGetBackend:
         backend_fn = get_backend(config, session_id=None)
         backend_fn("system prompt", "list files")
         assert "--resume" not in captured_args["cmd"]
+        assert "--session-id" not in captured_args["cmd"]
+
+
+class TestSessionIdVsResume:
+    """Tests for --session-id (new) vs --resume (existing) flag selection."""
+
+    def _capture_cmd(self, monkeypatch):
+        """Helper: mock shutil.which and subprocess.run, return captured cmd list."""
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/local/bin/claude")
+        captured = {}
+
+        def mock_run(*args, **kwargs):
+            captured["cmd"] = args[0]
+            return subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="ls\nList files\n", stderr=""
+            )
+
+        monkeypatch.setattr("subprocess.run", mock_run)
+        return captured
+
+    def test_new_session_uses_session_id_flag(self, monkeypatch):
+        """Expected use: is_new=True sends --session-id to create conversation."""
+        captured = self._capture_cmd(monkeypatch)
+        config = Config(backend="claude", model="sonnet")
+        backend_fn = get_backend(config, session_id="test-uuid-123", is_new=True)
+        backend_fn("system prompt", "list files")
+        assert "--session-id" in captured["cmd"]
+        assert "test-uuid-123" in captured["cmd"]
+        assert "--resume" not in captured["cmd"]
+
+    def test_existing_session_uses_resume_flag(self, monkeypatch):
+        """Expected use: is_new=False sends --resume to continue conversation."""
+        captured = self._capture_cmd(monkeypatch)
+        config = Config(backend="claude", model="sonnet")
+        backend_fn = get_backend(config, session_id="test-uuid-456", is_new=False)
+        backend_fn("system prompt", "list files")
+        assert "--resume" in captured["cmd"]
+        assert "test-uuid-456" in captured["cmd"]
+        assert "--session-id" not in captured["cmd"]
+
+    def test_no_flags_without_session_id(self, monkeypatch):
+        """Edge case: no session flags when session_id is None, regardless of is_new."""
+        captured = self._capture_cmd(monkeypatch)
+        config = Config(backend="claude", model="sonnet")
+        backend_fn = get_backend(config, session_id=None, is_new=True)
+        backend_fn("system prompt", "list files")
+        assert "--session-id" not in captured["cmd"]
+        assert "--resume" not in captured["cmd"]
+
+    def test_is_new_defaults_to_false(self, monkeypatch):
+        """Edge case: omitting is_new defaults to --resume for existing sessions."""
+        captured = self._capture_cmd(monkeypatch)
+        config = Config(backend="claude", model="sonnet")
+        # Reason: is_new not passed — should default to False → --resume
+        backend_fn = get_backend(config, session_id="test-uuid-789")
+        backend_fn("system prompt", "list files")
+        assert "--resume" in captured["cmd"]
+        assert "--session-id" not in captured["cmd"]

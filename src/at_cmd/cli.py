@@ -118,6 +118,7 @@ def translate_cmd(
         clear_session as do_clear_session,
         get_or_create_session,
         increment_interactions,
+        is_new_session,
         new_session as do_new_session,
         session_info as get_session_info,
     )
@@ -159,8 +160,11 @@ def translate_cmd(
         )
         session_id = None
 
+    # Determine if session is brand-new (needs --session-id instead of --resume)
+    session_is_new = bool(session_id) and is_new_session(cwd)
+
     try:
-        backend_fn = get_backend(config, session_id=session_id)
+        backend_fn = get_backend(config, session_id=session_id, is_new=session_is_new)
     except BackendError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)

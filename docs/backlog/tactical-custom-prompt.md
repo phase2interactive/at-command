@@ -96,30 +96,30 @@ handled by simply rephrasing the natural-language request.
 
 The custom text is appended to the system prompt **after** the core
 instructions and **before** any future structured blocks (e.g., available
-tools). This keeps the two-line output contract and shell context at the top
+tools). This keeps the JSON output contract and shell context at the top
 where the LLM sees them first, while user preferences act as additional
 constraints.
 
 Current system prompt (from `build_system_prompt`):
 
-```
+```text
 You are a shell command translator for {shell} on {os}.
 Working directory: {cwd}
 The user will describe what they want in natural language.
-Return EXACTLY two lines:
-Line 1: The {shell} command (no backticks, no markdown, one line, ...)
-Line 2: A brief description (10 words max) of what the command does
+Return your response as a JSON object with exactly these fields:
+{"command": "<the shell command>", "description": "<10 words max>"}
+Return ONLY the JSON object. No markdown, no explanation.
 ```
 
 With a custom prompt, the output becomes:
 
-```
+```text
 You are a shell command translator for {shell} on {os}.
 Working directory: {cwd}
 The user will describe what they want in natural language.
-Return EXACTLY two lines:
-Line 1: The {shell} command (no backticks, no markdown, one line, ...)
-Line 2: A brief description (10 words max) of what the command does
+Return your response as a JSON object with exactly these fields:
+{"command": "<the shell command>", "description": "<10 words max>"}
+Return ONLY the JSON object. No markdown, no explanation.
 
 Additional user instructions:
 Prefer fd over find and ripgrep over grep. Always use long flags for clarity.
@@ -236,13 +236,13 @@ If the custom prompt contradicts the core system prompt (e.g.,
 `"Return three lines instead of two"`), the core contract may break. This is
 the user's responsibility. Mitigations:
 
-- The core two-line instruction comes **first** in the prompt, giving it
+- The core JSON format instruction comes **first** in the prompt, giving it
   positional priority in most LLMs.
 - The "Additional user instructions:" header signals these are supplementary,
   not overrides.
 - Documentation in `README.md` and the config TUI should note: "Your custom
-  prompt should not override the output format (two lines: command +
-  description)."
+  prompt should not override the output format (JSON with command +
+  description fields)."
 
 ### Special characters
 

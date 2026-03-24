@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Date:** 2026-03-23
-**Depends on:** None (can ship independently)
+**Depends on:** JSON Response Format (implemented)
 
 ---
 
@@ -10,7 +10,7 @@
 
 at-cmd translates natural language into shell commands. The target user is someone who struggles with CLI syntax, which means they are also the user least likely to recognize a destructive command when they see one. The tool's primary safety guarantee -- human review before execution -- only works if the human understands what they are reviewing.
 
-Danger Warnings adds a classification step between sanitization and display. After `sanitize_response` returns a `(command, description)` pair, the command is scanned against a registry of dangerous patterns. If any match, a colored warning line is rendered above the editable prompt (submit mode) or above the description line (inline mode). The user still has full control; the warning is advisory, not blocking.
+Danger Warnings adds a classification step between response parsing and display. After `parse_response` returns an `LLMResponse`, the command is scanned against a registry of dangerous patterns. If any match, a colored warning line is rendered above the editable prompt (submit mode) or above the description line (inline mode). The user still has full control; the warning is advisory, not blocking.
 
 ## Motivation
 
@@ -176,11 +176,11 @@ def format_danger_warning(result: DangerResult) -> str | None:
 
 #### `cli.py` -- `translate_cmd`
 
-After `sanitize_response` returns and before the description/prompt is rendered:
+After `parse_response` returns and before the description/prompt is rendered:
 
 ```python
-command, description = sanitize_response(raw)
-danger = classify_danger(command)
+response = parse_response(raw)
+danger = classify_danger(response.command)
 ```
 
 **Submit mode (non-JSON):** If `danger.level` is not `None`, render the warning line to stderr before the description line.
@@ -194,8 +194,8 @@ The inline-mode shell functions already call `at-cmd translate --json`. They wil
 ### Module Dependency
 
 ```
-cli.py -> sanitize.py -> (command, description)
-                      -> danger.py -> DangerResult
+cli.py -> sanitize.py (parse_response) -> LLMResponse
+                                        -> danger.py -> DangerResult
        -> display warning
        -> editable prompt
 ```

@@ -10,7 +10,7 @@ Practical gaps and day-to-day friction reducers.
 |---------|-------------|---------|
 | Refine / Edit Previous Request | Double-Escape restores original `@ <request>` for editing (à la Claude Code); blind retry dropped | [tactical-regenerate.md](tactical-regenerate.md) |
 | Custom User Prompt | User-defined text appended to the system prompt via config | [tactical-custom-prompt.md](tactical-custom-prompt.md) |
-| JSON Response Format | Migrate LLM response contract from 2-line text to structured JSON | [tactical-json-response-format.md](tactical-json-response-format.md) |
+| JSON Response Format | Migrate LLM response contract from 2-line text to structured JSON (implemented) | [archive/tactical-json-response-format.md](archive/tactical-json-response-format.md) |
 | Danger Warnings | LLM-based danger classification in the JSON response (depends on JSON Response Format) | [tactical-danger-warnings.md](tactical-danger-warnings.md) |
 | Ambiguity Handling | Surface clarifying questions instead of guessing | [tactical-ambiguity-handling.md](tactical-ambiguity-handling.md) |
 | Inline Explanation Mode | `--explain` flag or keypress for plain-English command breakdown | [tactical-explain-mode.md](tactical-explain-mode.md) |

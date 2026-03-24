@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Date:** 2026-03-23
-**Depends on:** Core translate flow (cli.py, llm.py, sanitize.py)
+**Depends on:** JSON Response Format (implemented)
 
 ---
 
@@ -37,7 +37,7 @@ Today `at-cmd` returns a single command for every request. If the command is wro
 
 When `fzf` is not available or the user has configured `picker = "builtin"`:
 
-```
+```text
 $ @ compress the logs --candidates 3
   translating...
 
@@ -67,7 +67,7 @@ Behavior:
 
 When `fzf` is found on `$PATH` (or at the path specified by `fzf_path` config) and the user has not set `picker = "builtin"`:
 
-```
+```text
 $ @ compress the logs --candidates 3
   translating...
 
@@ -126,73 +126,72 @@ When `--candidates 1` (or omitted), the output format remains unchanged for back
 
 When `candidates > 1`, the system prompt returned by `build_system_prompt` changes. A new function `build_multi_candidate_system_prompt` (or an optional parameter on the existing function) produces:
 
-```
+```text
 You are a shell command translator for {shell} on {os}.
 Working directory: {cwd}
 The user will describe what they want in natural language.
-Return EXACTLY {N} alternatives, each as two lines:
-Line 1: A {shell} command (no backticks, no markdown, one line, use appropriate chaining for {shell})
-Line 2: A brief description (10 words max) of what the command does
-
-Separate each alternative with a blank line.
+Return your response as a JSON object with a "candidates" array containing exactly {N} alternatives:
+{"candidates": [{"command": "<command>", "description": "<10 words max>"}, ...]}
 Each alternative should use a DIFFERENT approach, tool, or flag combination.
 Do NOT repeat the same command with trivial variations.
+Return ONLY the JSON object. No markdown, no explanation.
 ```
-
-### Why a Blank-Line Separator
-
-A blank line between candidates is unambiguous and easy to parse. The existing single-candidate contract (two consecutive non-blank lines) is a subset of this format, so the parser can handle both with minimal branching.
 
 ### Example LLM Response (raw)
 
-```
-tar czf logs.tar.gz *.log
-Archive all .log files into a gzipped tarball
-
-gzip *.log
-Compress each .log file in place with gzip
-
-zip logs.zip *.log
-Create a zip archive of all .log files
+```json
+{
+  "candidates": [
+    {"command": "tar czf logs.tar.gz *.log", "description": "Archive all .log files into a gzipped tarball"},
+    {"command": "gzip *.log", "description": "Compress each .log file in place with gzip"},
+    {"command": "zip logs.zip *.log", "description": "Create a zip archive of all .log files"}
+  ]
+}
 ```
 
 ---
 
 ## Response Parsing
 
-### New Function: `sanitize_multi_response`
+### New Function: `parse_multi_response`
 
-Located in `sanitize.py` alongside the existing `sanitize_response`.
+Located in `sanitize.py` alongside the existing `parse_response`.
 
 ```python
-def sanitize_multi_response(raw: str, expected: int) -> list[tuple[str, str]]:
-    """Clean LLM output and extract multiple (command, description) pairs.
+def parse_multi_response(raw: str, expected: int) -> list[LLMResponse]:
+    """Parse a multi-candidate JSON LLM response.
+
+    Tries JSON parsing first (looking for a "candidates" array).
+    Falls back to the legacy text parser for single-candidate responses.
 
     Args:
         raw: Raw text from the LLM backend.
         expected: Number of candidates requested.
 
     Returns:
-        list[tuple[str, str]]: List of (command, description) pairs.
+        list[LLMResponse]: List of parsed responses.
 
     Raises:
         SanitizeError: If no valid candidates can be extracted.
     """
 ```
 
-Algorithm:
+**Parsing strategy:**
 
-1. Strip the full response of leading/trailing whitespace.
-2. Remove markdown code fences (same regex as `sanitize_response`).
-3. Split on blank lines (`\n\n` or `\n\s*\n`) to get candidate blocks.
-4. For each block, apply the existing `_clean_command` to line 1 and strip line 2 for the description.
-5. Discard any block that yields an empty command after cleaning.
-6. Deduplicate: if two candidates have identical commands (after cleaning), keep only the first.
-7. Return up to `expected` candidates. If fewer remain, return what we have (see edge cases below).
+1. Strip whitespace and any markdown code fences.
+2. Attempt `json.loads()`.
+3. If the JSON contains a `"candidates"` array, iterate each element:
+   - Validate `command` is a non-empty string.
+   - Apply `_clean_command()` to the command value.
+   - Default `description` to `""` if missing.
+4. Deduplicate: if two candidates have identical commands (after cleaning), keep only the first.
+5. Truncate to `expected` candidates.
+6. If JSON parsing fails or no `"candidates"` key exists, fall back to `parse_response()` and return a single-element list.
+7. If zero valid candidates remain after cleaning, raise `SanitizeError`.
 
 ### Backward Compatibility
 
-`sanitize_response` is unchanged. When `candidates == 1`, the existing code path is used. The new function is only called when `candidates > 1`.
+`parse_response` is unchanged. When `candidates == 1`, the existing code path is used. The new function is only called when `candidates > 1`.
 
 ---
 
@@ -204,7 +203,7 @@ Algorithm:
 |--------|--------|
 | `cli.py` | Add `--candidates` option to `translate_cmd`. Add picker logic (fzf and builtin). Modify JSON output when candidates > 1. |
 | `llm.py` | Add `candidates` parameter to `build_system_prompt` (or new builder function). No change to `BackendFn` protocol -- the backend still returns a single string; multi-candidate parsing is the caller's job. |
-| `sanitize.py` | Add `sanitize_multi_response` function. |
+| `sanitize.py` | Add `parse_multi_response` function. |
 | `config.py` | Add `candidates: int = 1` and `picker: str = "auto"` and `fzf_path: str = ""` fields to `Config`. Wire up `AT_CMD_CANDIDATES`, `AT_CMD_PICKER`, `AT_CMD_FZF_PATH` env vars. |
 | `init.py` | No changes required. The shell integration passes `--candidates` through if the user includes it in their request. |
 
@@ -216,25 +215,25 @@ A small module that encapsulates candidate selection UI.
 # src/at_cmd/picker.py
 
 def pick_candidate(
-    candidates: list[tuple[str, str]],
+    candidates: list[LLMResponse],
     use_fzf: bool,
     fzf_path: str,
-) -> tuple[str, str] | None:
+) -> LLMResponse | None:
     """Present candidates to the user and return the chosen one.
 
     Args:
-        candidates: List of (command, description) pairs.
+        candidates: List of LLMResponse objects.
         use_fzf: Whether to use fzf for selection.
         fzf_path: Path to fzf binary (empty string means find on PATH).
 
     Returns:
-        The selected (command, description) tuple, or None if cancelled.
+        The selected LLMResponse, or None if cancelled.
     """
 ```
 
 ### Data Flow (candidates > 1)
 
-```
+```text
 cli.py: translate_cmd
   |
   +--> detect_context(), load_config()
@@ -242,15 +241,15 @@ cli.py: translate_cmd
   +--> get_backend(config) -> backend_fn
   |
   +--> build_system_prompt(ctx, candidates=N)
-  |      (includes multi-candidate instructions)
+  |      (includes multi-candidate JSON instructions)
   |
   +--> backend_fn(system_prompt, user_prompt) -> raw: str
   |
-  +--> sanitize_multi_response(raw, expected=N) -> list[(cmd, desc)]
+  +--> parse_multi_response(raw, expected=N) -> list[LLMResponse]
   |
-  +--> picker.pick_candidate(candidates, use_fzf, fzf_path) -> (cmd, desc) | None
+  +--> picker.pick_candidate(candidates, use_fzf, fzf_path) -> LLMResponse | None
   |
-  +--> if selection: editable readline prompt with cmd
+  +--> if selection: editable readline prompt with selection.command
   |    if None:      exit (user cancelled)
 ```
 
@@ -269,7 +268,7 @@ Detection uses `shutil.which(fzf_path or "fzf")`.
 ```python
 proc = subprocess.run(
     [fzf_bin, "--height=~10", "--layout=reverse", "--ansi", "--no-multi"],
-    input="\n".join(f"{cmd}  --  {desc}" for cmd, desc in candidates),
+    input="\n".join(f"{r.command}  --  {r.description}" for r in candidates),
     capture_output=True,
     text=True,
 )
@@ -324,7 +323,7 @@ After sanitization, if two candidates have the same command string (case-sensiti
 
 ### LLM Ignores Multi-Candidate Instructions
 
-Some models may ignore the multi-candidate system prompt and return a single two-line response. The parser handles this gracefully: it returns a list with one element. If `candidates > 1` but only one candidate is returned, skip the picker and go directly to the editable prompt (same as single-candidate flow).
+Some models may ignore the multi-candidate system prompt and return a single JSON object with `command`/`description` instead of a `candidates` array. The parser handles this gracefully: it falls back to `parse_response()` and returns a list with one element. If `candidates > 1` but only one candidate is returned, skip the picker and go directly to the editable prompt (same as single-candidate flow).
 
 ### fzf Not Installed and picker = "fzf"
 
@@ -332,7 +331,7 @@ Print a clear error to stderr: `Error: fzf not found. Install fzf or set picker 
 
 ### Single Candidate Requested
 
-When `candidates == 1` (the default), the entire multi-candidate code path is skipped. The existing `sanitize_response` and direct-to-readline flow is used unchanged. No picker is shown. This preserves full backward compatibility.
+When `candidates == 1` (the default), the entire multi-candidate code path is skipped. The existing `parse_response` and direct-to-readline flow is used unchanged. No picker is shown. This preserves full backward compatibility.
 
 ### Candidate With Multi-Line Command
 
@@ -340,7 +339,7 @@ If the LLM returns a candidate whose "command" spans multiple lines (e.g., a her
 
 ### Empty Description
 
-If a candidate block has only one line (command but no description), the description defaults to an empty string, matching the existing `sanitize_response` behavior.
+If a candidate JSON object has no `description` field or an empty string, the description defaults to an empty string, matching the existing `parse_response` behavior.
 
 ---
 
@@ -348,19 +347,20 @@ If a candidate block has only one line (command but no description), the descrip
 
 All tests in `tests/test_picker.py` and `tests/test_sanitize.py`.
 
-### sanitize_multi_response
+### parse_multi_response
 
 | Test | Input | Expected |
 |------|-------|----------|
-| Happy path: 3 candidates | Three two-line blocks separated by blank lines | List of 3 (command, description) tuples |
-| Markdown fences around entire response | Fenced block with 3 candidates | Fences stripped, 3 tuples returned |
-| Fewer candidates than requested | 2 blocks when 3 expected | List of 2 tuples (no error) |
-| More candidates than requested | 4 blocks when 3 expected | List of 3 tuples (truncated) |
-| Duplicate commands | 3 blocks, two with identical commands | List of 2 tuples (deduped) |
-| Single candidate returned when 3 expected | One two-line block | List of 1 tuple |
-| Empty response | Empty string | Raises SanitizeError |
-| All candidates invalid after cleaning | Blocks with only whitespace/backticks | Raises SanitizeError |
-| Missing description on one candidate | One block with command only, others complete | Tuple has empty description string |
+| Happy path: 3 candidates | JSON with `candidates` array of 3 objects | List of 3 `LLMResponse` objects |
+| Markdown fences around JSON | Fenced JSON block with 3 candidates | Fences stripped, 3 responses returned |
+| Fewer candidates than requested | 2 objects when 3 expected | List of 2 responses (no error) |
+| More candidates than requested | 4 objects when 3 expected | List of 3 responses (truncated) |
+| Duplicate commands | 3 objects, two with identical commands | List of 2 responses (deduped) |
+| Single-object JSON fallback | `{"command": "ls", "description": "List"}` (no `candidates` key) | List of 1 `LLMResponse` |
+| Empty response | Empty string | Raises `SanitizeError` |
+| All candidates invalid after cleaning | Objects with empty or whitespace-only commands | Raises `SanitizeError` |
+| Missing description on one candidate | One object without `description` field | `LLMResponse` has empty description string |
+| Command with backticks | `{"command": "\`ls -la\`"}` | Backticks stripped via `_clean_command` |
 
 ### picker.pick_candidate (builtin)
 
@@ -376,7 +376,7 @@ All tests in `tests/test_picker.py` and `tests/test_sanitize.py`.
 
 | Test | Scenario | Expected |
 |------|----------|----------|
-| fzf returns selection | Mock subprocess with stdout line | Returns parsed (command, description) |
+| fzf returns selection | Mock subprocess with stdout line | Returns parsed `LLMResponse` |
 | fzf cancelled (rc 130) | Mock subprocess with returncode 130 | Returns None |
 | fzf not found | shutil.which returns None, picker="fzf" | Raises error |
 

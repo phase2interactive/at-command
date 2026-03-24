@@ -372,7 +372,7 @@ import sys
 from typing import Iterator
 
 from at_cmd.streaming import StreamingBackendFn, DeltaEvent, DoneEvent
-from at_cmd.sanitize import sanitize_response
+from at_cmd.sanitize import parse_response
 
 def stream_json_events(
     stream_fn: StreamingBackendFn,
@@ -387,7 +387,8 @@ def stream_json_events(
         sys.stdout.write(json.dumps(event) + "\n")
         sys.stdout.flush()
 
-    command, description = sanitize_response(accumulated)
+    response = parse_response(accumulated)
+    command, description = response.command, response.description
     done = {"event": "done", "command": command, "description": description}
     sys.stdout.write(json.dumps(done) + "\n")
     sys.stdout.flush()
@@ -410,7 +411,8 @@ def stream_stderr_preview(
     sys.stderr.write("\r\033[K")   # clear preview line
     sys.stderr.flush()
 
-    return sanitize_response(accumulated)
+    response = parse_response(accumulated)
+    return response.command, response.description
 ```
 
 ### Changes to Existing Modules
@@ -498,7 +500,7 @@ Some backends (especially `claude` CLI with `--output-format stream-json`) may b
 
 ### Partial Output Contains Markdown/Backticks
 
-During streaming, partial output is rendered raw (not sanitized) because `sanitize_response()` operates on complete text. Backticks or markdown fences may briefly appear in the ghost text. This is acceptable because:
+During streaming, partial output is rendered raw (not sanitized) because `parse_response()` operates on complete text. Backticks or markdown fences may briefly appear in the ghost text. This is acceptable because:
 
 1. Ghost text is dim and provisional.
 2. The `done` event carries the sanitized command.
@@ -535,7 +537,7 @@ If the terminal is resized while ghost text is being rendered, the line-clearing
 | `test_stream_fallback_to_block` | `test_streaming.py` | When streaming backend returns None, verify the CLI falls back to the non-streaming path. |
 | `test_stream_cancel_sigpipe` | `test_ghost.py` | Simulate BrokenPipeError during `stream_json_events()`, verify clean exit. |
 | `test_config_streaming_flag` | `test_config.py` | Verify `streaming = false` in config.toml and `AT_CMD_STREAMING=false` both disable streaming. |
-| `test_sanitize_on_partial` | `test_ghost.py` | Verify that `sanitize_response()` is called only on the complete accumulated text, not on partial deltas. |
+| `test_parse_on_partial` | `test_ghost.py` | Verify that `parse_response()` is called only on the complete accumulated text, not on partial deltas. |
 
 ### Integration Tests
 

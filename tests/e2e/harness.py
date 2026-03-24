@@ -215,7 +215,7 @@ class CastRecording:
     def transcript(
         self,
         pause_threshold: float = 1.5,
-        prompt_patterns: tuple[str, ...] = ("❯", "$ "),
+        prompt_patterns: tuple[str, ...] = ("$ ",),
     ) -> list["TranscriptEntry"]:
         """Build an annotated transcript from the recording.
 
@@ -292,11 +292,6 @@ class CastRecording:
             # Non-spinner frame — flush any pending spinner first
             _flush_spinner()
 
-            # Skip empty frames (erase-line, bracket paste toggles)
-            if not clean.strip():
-                prev_ts = frame.timestamp
-                continue
-
             # Reason: look past PAUSE entries to find the last semantic event,
             # because user input often arrives after a typing-delay PAUSE
             prev_kind = ""
@@ -304,6 +299,11 @@ class CastRecording:
                 if e.kind != "PAUSE":
                     prev_kind = e.kind
                     break
+
+            # Skip empty frames (erase-line, bracket paste toggles)
+            if not clean.strip():
+                prev_ts = frame.timestamp
+                continue
 
             kind = _classify_frame(clean, prompt_patterns, prev_kind)
 
@@ -344,6 +344,15 @@ class CastRecording:
                 lines.append(f"{ts} PAUSE: {e.duration:.1f}s{note}")
             elif e.kind == "SPINNER":
                 lines.append(f"{ts} SPINNER ({e.duration:.1f}s): {e.text}{note}")
+            elif e.kind == "RESPONSE":
+                # Reason: parse the JSON for a compact display
+                try:
+                    data = json.loads(e.text)
+                    cmd = data.get("command", "")
+                    desc = data.get("description", "")
+                    lines.append(f"{ts} RESPONSE: `{cmd}` — {desc}{note}")
+                except (json.JSONDecodeError, TypeError):
+                    lines.append(f"{ts} RESPONSE: {e.text}{note}")
             elif e.kind in ("OUTPUT", "ERROR"):
                 # Indent multi-line output
                 text_lines = e.text.splitlines()
@@ -370,7 +379,15 @@ class TranscriptEntry:
 
     Attributes:
         timestamp: Seconds since recording start.
-        kind: Event type — PROMPT, INPUT, OUTPUT, SPINNER, PAUSE, ERROR.
+        kind: Event type. One of:
+            PROMPT      — shell prompt appeared (includes chrome)
+            INPUT       — user typed a command
+            OUTPUT      — generic program output
+            RESPONSE    — at-cmd JSON response (translated command)
+            DESCRIPTION — at-cmd description comment (# after spinner)
+            SPINNER     — collapsed spinner animation
+            PAUSE       — significant gap in output
+            ERROR       — error message
         text: Cleaned content of the event.
         duration: Duration in seconds (for SPINNER, PAUSE, OUTPUT bursts).
         note: Optional annotation (e.g., "user hesitation", "LLM latency").
@@ -390,35 +407,56 @@ def _classify_frame(
 ) -> str:
     """Classify a cleaned frame into a transcript event kind.
 
+    Classification relies on:
+    - Content patterns from at-cmd's documented behavior (Error: prefix,
+      JSON with "command" key, # description prefix)
+    - Sequencing (what came before this frame)
+    - User-supplied prompt_patterns for shell prompt detection
+
+    Does NOT rely on specific prompt characters, ANSI color codes, or
+    shell-specific behaviors.
+
     Args:
         clean: Cleaned frame text.
         prompt_patterns: Strings that indicate a shell prompt.
-        prev_kind: The kind of the previous transcript entry (for context).
+        prev_kind: The kind of the previous non-PAUSE transcript entry.
 
     Returns:
-        str: One of PROMPT, INPUT, OUTPUT, ERROR.
+        str: Event kind — see TranscriptEntry.kind for the full list.
     """
     stripped = clean.strip()
 
-    # Reason: errors from at-cmd start with "Error:" on stderr
+    # Reason: errors from at-cmd use click.echo(f"Error: {e}", err=True)
     if stripped.startswith("Error:"):
         return "ERROR"
 
-    # Reason: shell prompts end with a recognizable marker
+    # Reason: at-cmd description is a # comment emitted right after the
+    # spinner finishes (cli.py: click.echo(f"# {description}", err=True)).
+    # The sequencing constraint (prev_kind == SPINNER) prevents false
+    # positives from shell comments or other # text.
+    if stripped.startswith("#") and prev_kind == "SPINNER":
+        return "DESCRIPTION"
+
+    # Reason: at-cmd JSON response follows the documented contract —
+    # a JSON object with a "command" key (see sanitize.py, CLAUDE.md).
+    if stripped.startswith("{") and '"command"' in stripped:
+        return "RESPONSE"
+
+    # Reason: shell prompts contain a user-configured marker string.
+    # The caller passes prompt_patterns appropriate to their shell.
     for pat in prompt_patterns:
         if pat in stripped:
-            # Reason: if there's content after the prompt marker and it looks
-            # like a command (not just the prompt), it's prompt + input combined
+            # Reason: if there's content after the prompt marker, it's
+            # the prompt + user input combined in one frame
             idx = stripped.rfind(pat)
             after = stripped[idx + len(pat):].strip()
             if after:
                 return "INPUT"
             return "PROMPT"
 
-    # Reason: text following a PROMPT is user input — in real captures, the
-    # user's typed command arrives as a separate frame after the prompt,
-    # often with a PAUSE in between (typing delay). We check prev_kind which
-    # the caller sets to the last non-PAUSE entry kind when appropriate.
+    # Reason: text following a PROMPT is user input — in real captures,
+    # the user's typed command arrives as a separate frame after the
+    # prompt, often with a PAUSE in between (typing delay).
     if prev_kind == "PROMPT" and not stripped.startswith("#"):
         return "INPUT"
 
@@ -449,13 +487,16 @@ def _pause_hint(gap: float, entries: list[TranscriptEntry]) -> str:
         return "blocked / loading"
 
     # Reason: pause after INPUT = user typed command, waiting for response
-    # OR user is at interactive readline prompt
     if last_kind == "INPUT":
         return "waiting for response"
 
     # Reason: pause after ERROR = user reading error, deciding next step
     if last_kind == "ERROR":
         return "reading error"
+
+    # Reason: pause after RESPONSE or DESCRIPTION = user reading result
+    if last_kind in ("RESPONSE", "DESCRIPTION"):
+        return "user reading result"
 
     return ""
 

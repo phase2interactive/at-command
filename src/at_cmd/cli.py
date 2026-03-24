@@ -93,26 +93,74 @@ def main() -> None:
 
 
 @main.command("translate", hidden=True)
-@click.argument("request", nargs=-1, required=True)
+@click.argument("request", nargs=-1, required=False)
 @click.option("--json-output", "--json", "json_mode", is_flag=True, help="Output JSON.")
 @click.option("--shell", "shell_name", default=None, help="Override shell detection.")
 @click.option("--backend", default=None, help="LLM backend.")
 @click.option("--model", default=None, help="Model identifier.")
+@click.option("--no-session", is_flag=True, help="Run stateless, no session context.")
+@click.option("--new-session", "new_session_flag", is_flag=True, help="Start a fresh session.")
+@click.option("--clear-session", is_flag=True, help="Clear session for current directory.")
+@click.option("--session-info", is_flag=True, help="Show current session info.")
 def translate_cmd(
-    request: tuple[str, ...],
+    request: tuple[str, ...] | None,
     json_mode: bool,
     shell_name: str | None,
     backend: str | None,
     model: str | None,
+    no_session: bool,
+    new_session_flag: bool,
+    clear_session: bool,
+    session_info: bool,
 ) -> None:
     """Translate natural language into a shell command."""
+    from at_cmd.session import (
+        clear_session as do_clear_session,
+        get_or_create_session,
+        increment_interactions,
+        new_session as do_new_session,
+        session_info as get_session_info,
+    )
+
+    cwd = os.getcwd()
+
+    # Session management flags — early return, no translation needed
+    if clear_session:
+        do_clear_session(cwd)
+        click.echo("Session cleared.", err=True)
+        return
+
+    if session_info:
+        info = get_session_info(cwd)
+        click.echo(info or "No active session.", err=True)
+        return
+
+    if not request:
+        click.echo("Error: Missing request text.", err=True)
+        sys.exit(1)
+
     user_prompt = " ".join(request)
 
     shell_ctx = detect_context(shell_override=shell_name)
     config = load_config(backend_override=backend, model_override=model)
 
+    # Resolve session ID
+    session_id: str | None = None
+    if not no_session and config.resume_session:
+        if new_session_flag:
+            session_id = do_new_session(cwd)
+        else:
+            session_id = get_or_create_session(cwd)
+
+    if session_id and config.backend != "claude":
+        click.echo(
+            "Warning: Session context requires the claude backend. Running stateless.",
+            err=True,
+        )
+        session_id = None
+
     try:
-        backend_fn = get_backend(config)
+        backend_fn = get_backend(config, session_id=session_id)
     except BackendError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -127,6 +175,9 @@ def translate_cmd(
     except (BackendError, SanitizeError) as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
+
+    if session_id:
+        increment_interactions(cwd)
 
     command, description = response.command, response.description
 

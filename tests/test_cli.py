@@ -69,3 +69,74 @@ class TestCli:
         result = runner.invoke(main, ["--json", "list", "files"])
         assert result.exit_code != 0
         assert "Claude CLI not found" in result.output
+
+
+class TestSessionFlags:
+    """Tests for session management CLI flags."""
+
+    def test_session_info_no_session(self, monkeypatch):
+        """Expected use: --session-info with no session shows message."""
+        monkeypatch.setattr("at_cmd.session._load_sessions", lambda: {})
+        runner = CliRunner()
+        result = runner.invoke(main, ["--session-info"])
+        assert result.exit_code == 0
+        assert "No active session" in result.output
+
+    def test_clear_session_flag(self, monkeypatch):
+        """Expected use: --clear-session prints confirmation."""
+        monkeypatch.setattr("at_cmd.session._load_sessions", lambda: {})
+        monkeypatch.setattr("at_cmd.session._save_sessions", lambda d: None)
+        runner = CliRunner()
+        result = runner.invoke(main, ["--clear-session"])
+        assert result.exit_code == 0
+        assert "Session cleared" in result.output
+
+    def test_no_session_flag(self, monkeypatch):
+        """Expected use: --no-session prevents --resume in subprocess call."""
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/local/bin/claude")
+
+        captured_args = {}
+
+        def mock_run(*args, **kwargs):
+            captured_args["cmd"] = args[0]
+            import subprocess
+
+            return subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="ls -la\nList files", stderr=""
+            )
+
+        monkeypatch.setattr("at_cmd.llm.subprocess.run", mock_run)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["--json", "--no-session", "--shell", "bash", "list", "files"]
+        )
+        assert result.exit_code == 0
+        assert "--resume" not in captured_args.get("cmd", [])
+
+    def test_non_claude_backend_session_warning(self, monkeypatch):
+        """Edge case: non-claude backend emits session warning."""
+        import httpx
+
+        monkeypatch.setattr("at_cmd.session._storage_path", lambda: __import__("pathlib").Path("/tmp/at-cmd-test-sessions.json"))
+        monkeypatch.setattr("at_cmd.session._load_sessions", lambda: {})
+        monkeypatch.setattr("at_cmd.session._save_sessions", lambda d: None)
+        monkeypatch.setattr(
+            "at_cmd.session.get_or_create_session",
+            lambda cwd: "at-cmd-test123",
+        )
+
+        def mock_post(*args, **kwargs):
+            return httpx.Response(
+                200,
+                json={"response": '{"command": "ls", "description": "list"}'},
+            )
+
+        monkeypatch.setattr("httpx.post", mock_post)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["--json", "--shell", "bash", "--backend", "ollama", "list", "files"],
+        )
+        assert "Session context requires the claude backend" in result.output

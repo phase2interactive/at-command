@@ -27,7 +27,7 @@ Ambitious ideas that push the boundaries of what a natural-language CLI tool cou
 
 | Feature | Description | Details |
 |---------|-------------|---------|
-| Session Context (--resume) | Reuse Claude CLI sessions across invocations for conversational context | [exploratory-shell-history-context.md](exploratory-shell-history-context.md) |
+| Session Context (--resume) | Reuse Claude CLI sessions across invocations for conversational context (implemented) | [archive/exploratory-shell-history-context.md](archive/exploratory-shell-history-context.md) |
 | Streaming Ghost Text | Stream the translated command character-by-character as dim text | [exploratory-streaming-ghost-text.md](exploratory-streaming-ghost-text.md) |
 | Teachable Vocabulary | Learn from user edits; store `(request, corrected_command)` pairs locally | [exploratory-teachable-vocabulary.md](exploratory-teachable-vocabulary.md) |
 | Self-Improving Calibration | Track edit distance over time and auto-propose prompt amendments | [exploratory-self-improving.md](exploratory-self-improving.md) |

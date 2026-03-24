@@ -42,11 +42,12 @@ def build_system_prompt(ctx: ShellContext) -> str:
     )
 
 
-def get_backend(config: Config) -> BackendFn:
+def get_backend(config: Config, session_id: str | None = None) -> BackendFn:
     """Get the appropriate backend function for the configured backend.
 
     Args:
         config: Resolved configuration.
+        session_id: Optional session ID for conversation persistence (claude only).
 
     Returns:
         BackendFn: Callable that takes (system_prompt, user_prompt) and returns raw text.
@@ -64,14 +65,15 @@ def get_backend(config: Config) -> BackendFn:
     if not factory:
         raise BackendError(f"Unknown backend: {config.backend}")
 
-    return factory(config)
+    return factory(config, session_id=session_id)
 
 
-def _claude_backend(config: Config) -> BackendFn:
+def _claude_backend(config: Config, session_id: str | None = None) -> BackendFn:
     """Create a Claude CLI backend.
 
     Args:
         config: Resolved configuration.
+        session_id: Optional session ID for conversation persistence.
 
     Returns:
         BackendFn: Backend function using the claude CLI.
@@ -98,8 +100,11 @@ def _claude_backend(config: Config) -> BackendFn:
             BackendError: If the CLI invocation fails.
         """
         full_prompt = f"{system_prompt}\n\nUser request: {user_prompt}"
+        cmd = ["claude", "-p", "--model", config.model]
+        if session_id:
+            cmd.extend(["--resume", session_id])
         result = subprocess.run(
-            ["claude", "-p", "--model", config.model],
+            cmd,
             input=full_prompt,
             capture_output=True,
             text=True,
@@ -112,7 +117,7 @@ def _claude_backend(config: Config) -> BackendFn:
     return call
 
 
-def _ollama_backend(config: Config) -> BackendFn:
+def _ollama_backend(config: Config, session_id: str | None = None) -> BackendFn:
     """Create an Ollama HTTP backend.
 
     Args:
@@ -155,7 +160,7 @@ def _ollama_backend(config: Config) -> BackendFn:
     return call
 
 
-def _openai_backend(config: Config) -> BackendFn:
+def _openai_backend(config: Config, session_id: str | None = None) -> BackendFn:
     """Create an OpenAI-compatible HTTP backend.
 
     Args:

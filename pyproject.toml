@@ -21,12 +21,17 @@ packages = ["src/at_cmd"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["integration: tests that call real external services (Claude CLI, etc.)"]
-addopts = "-m 'not integration'"
+markers = [
+    "integration: tests that call real external services (Claude CLI, etc.)",
+    "e2e: end-to-end tests that drive the full CLI via pexpect + asciinema",
+]
+addopts = "-m 'not integration and not e2e'"
 
 [dependency-groups]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=7.1.0",
     "pytest-mock>=3.14",
+    "pexpect>=4.9",
+    "asciinema>=2.4",
 ]

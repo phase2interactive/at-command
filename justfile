@@ -51,6 +51,19 @@ config:
 init SHELL:
     uv run at-cmd init {{SHELL}}
 
+# Run e2e tests (requires at-cmd installed + LLM backend)
+test-e2e *ARGS:
+    uv run pytest -m e2e -v {{ARGS}}
+
+# Record an ad-hoc terminal session with asciinema
+record SESSION_NAME="adhoc":
+    @mkdir -p recordings
+    asciinema rec --overwrite --cols 120 --rows 30 "recordings/{{SESSION_NAME}}.cast"
+
+# Replay a recorded session
+replay SESSION_NAME="adhoc":
+    asciinema play "recordings/{{SESSION_NAME}}.cast"
+
 # Translate a natural language request (for quick testing)
 translate +REQUEST:
     uv run at-cmd {{REQUEST}}

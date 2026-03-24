@@ -66,3 +66,42 @@ class TestGetBackend:
         config = Config(backend="openai", api_key="")
         with pytest.raises(BackendError, match="requires AT_CMD_API_KEY"):
             get_backend(config)
+
+    def test_claude_backend_appends_resume_flag(self, monkeypatch):
+        """Expected use: --resume is added to subprocess args when session_id is set."""
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/local/bin/claude")
+
+        captured_args = {}
+
+        def mock_run(*args, **kwargs):
+            captured_args["cmd"] = args[0]
+            return subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="ls\nList files\n", stderr=""
+            )
+
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        config = Config(backend="claude", model="sonnet")
+        backend_fn = get_backend(config, session_id="at-cmd-abc123")
+        backend_fn("system prompt", "list files")
+        assert "--resume" in captured_args["cmd"]
+        assert "at-cmd-abc123" in captured_args["cmd"]
+
+    def test_claude_backend_no_resume_without_session(self, monkeypatch):
+        """Expected use: no --resume flag when session_id is None."""
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/local/bin/claude")
+
+        captured_args = {}
+
+        def mock_run(*args, **kwargs):
+            captured_args["cmd"] = args[0]
+            return subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="ls\nList files\n", stderr=""
+            )
+
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        config = Config(backend="claude", model="sonnet")
+        backend_fn = get_backend(config, session_id=None)
+        backend_fn("system prompt", "list files")
+        assert "--resume" not in captured_args["cmd"]

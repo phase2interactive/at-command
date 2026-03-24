@@ -44,6 +44,7 @@ class Config:
     default_mode: str = "inline"
     hotkey: str = "alt+g"
     undo_key: str = "ctrl+z"
+    resume_session: bool = True
 
 
 def load_config(
@@ -82,6 +83,9 @@ def load_config(
     timeout_env = os.environ.get("AT_CMD_TIMEOUT")
     if timeout_env:
         cfg.timeout = int(timeout_env)
+    resume_env = os.environ.get("AT_CMD_RESUME_SESSION")
+    if resume_env is not None:
+        cfg.resume_session = resume_env.lower() not in ("false", "0", "no")
 
     # Layer 4: CLI overrides
     if backend_override:
@@ -103,7 +107,9 @@ def save_config(cfg: Config) -> None:
     lines = []
     for f_info in fields(cfg):
         val = getattr(cfg, f_info.name)
-        if isinstance(val, str):
+        if isinstance(val, bool):
+            lines.append(f"{f_info.name} = {str(val).lower()}")
+        elif isinstance(val, str):
             lines.append(f'{f_info.name} = "{val}"')
         else:
             lines.append(f"{f_info.name} = {val}")

@@ -120,6 +120,27 @@ def increment_interactions(cwd: str) -> None:
         _save_sessions(sessions)
 
 
+def is_new_session(cwd: str) -> bool:
+    """Check whether the session for cwd has zero interactions.
+
+    A new session (0 interactions) has never been sent to the Claude CLI,
+    so it needs ``--session-id`` to create the conversation.  After the
+    first successful call the interaction count is bumped and subsequent
+    calls should use ``--resume``.
+
+    Args:
+        cwd: Working directory path.
+
+    Returns:
+        bool: True when the session has 0 interactions (never used yet).
+    """
+    sessions = _load_sessions()
+    entry = sessions.get(cwd)
+    if entry is None:
+        return True
+    return entry.get("interactions", 0) == 0
+
+
 def session_info(cwd: str) -> str | None:
     """Get a formatted info string for the cwd session.
 

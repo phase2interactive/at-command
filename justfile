@@ -24,6 +24,10 @@ test *ARGS:
 testv *ARGS:
     uv run pytest -v {{ARGS}}
 
+# Run integration tests (requires Claude CLI)
+test-integration *ARGS:
+    uv run pytest -m integration -v {{ARGS}}
+
 # Run tests with coverage report
 coverage *ARGS:
     uv run pytest --cov=src/at_cmd --cov-report=term-missing {{ARGS}}

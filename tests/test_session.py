@@ -8,6 +8,7 @@ from at_cmd.session import (
     clear_session,
     get_or_create_session,
     increment_interactions,
+    is_new_session,
     new_session,
     session_info,
 )
@@ -126,3 +127,33 @@ class TestSessionInfo:
         """Returns None when no session exists."""
         info = session_info("/nonexistent")
         assert info is None
+
+
+# ── is_new_session ───────────────────────────────────────────────
+
+
+class TestIsNewSession:
+    """Tests for is_new_session() — determines --session-id vs --resume."""
+
+    def test_new_session_has_zero_interactions(self):
+        """Expected use: freshly created session is considered new."""
+        get_or_create_session("/home/dev/project")
+        assert is_new_session("/home/dev/project") is True
+
+    def test_not_new_after_increment(self):
+        """Expected use: session is no longer new after first interaction."""
+        get_or_create_session("/home/dev/project")
+        increment_interactions("/home/dev/project")
+        assert is_new_session("/home/dev/project") is False
+
+    def test_nonexistent_session_is_new(self):
+        """Edge case: nonexistent session treated as new (safe default)."""
+        assert is_new_session("/nonexistent/path") is True
+
+    def test_new_after_forced_reset(self):
+        """Edge case: new_session() resets interactions to 0, so it's new again."""
+        get_or_create_session("/home/dev/project")
+        increment_interactions("/home/dev/project")
+        assert is_new_session("/home/dev/project") is False
+        new_session("/home/dev/project")
+        assert is_new_session("/home/dev/project") is True

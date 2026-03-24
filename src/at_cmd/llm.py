@@ -42,12 +42,19 @@ def build_system_prompt(ctx: ShellContext) -> str:
     )
 
 
-def get_backend(config: Config, session_id: str | None = None) -> BackendFn:
+def get_backend(
+    config: Config,
+    session_id: str | None = None,
+    is_new: bool = False,
+) -> BackendFn:
     """Get the appropriate backend function for the configured backend.
 
     Args:
         config: Resolved configuration.
         session_id: Optional session ID for conversation persistence (claude only).
+        is_new: Whether this is a brand-new session with no prior interactions.
+            When True the claude backend uses ``--session-id`` (creates);
+            when False it uses ``--resume`` (continues).
 
     Returns:
         BackendFn: Callable that takes (system_prompt, user_prompt) and returns raw text.
@@ -65,15 +72,21 @@ def get_backend(config: Config, session_id: str | None = None) -> BackendFn:
     if not factory:
         raise BackendError(f"Unknown backend: {config.backend}")
 
-    return factory(config, session_id=session_id)
+    return factory(config, session_id=session_id, is_new=is_new)
 
 
-def _claude_backend(config: Config, session_id: str | None = None) -> BackendFn:
+def _claude_backend(
+    config: Config,
+    session_id: str | None = None,
+    is_new: bool = False,
+) -> BackendFn:
     """Create a Claude CLI backend.
 
     Args:
         config: Resolved configuration.
         session_id: Optional session ID for conversation persistence.
+        is_new: Whether this is a brand-new session (use --session-id to create)
+            vs an existing one (use --resume to continue).
 
     Returns:
         BackendFn: Backend function using the claude CLI.
@@ -102,7 +115,13 @@ def _claude_backend(config: Config, session_id: str | None = None) -> BackendFn:
         full_prompt = f"{system_prompt}\n\nUser request: {user_prompt}"
         cmd = ["claude", "-p", "--model", config.model]
         if session_id:
-            cmd.extend(["--resume", session_id])
+            # Reason: --session-id creates a new conversation with that ID;
+            # --resume continues an existing one. Using --resume on a session
+            # with 0 interactions fails with "No conversation found".
+            if is_new:
+                cmd.extend(["--session-id", session_id])
+            else:
+                cmd.extend(["--resume", session_id])
         result = subprocess.run(
             cmd,
             input=full_prompt,
@@ -117,7 +136,7 @@ def _claude_backend(config: Config, session_id: str | None = None) -> BackendFn:
     return call
 
 
-def _ollama_backend(config: Config, session_id: str | None = None) -> BackendFn:
+def _ollama_backend(config: Config, session_id: str | None = None, is_new: bool = False) -> BackendFn:
     """Create an Ollama HTTP backend.
 
     Args:
@@ -160,7 +179,7 @@ def _ollama_backend(config: Config, session_id: str | None = None) -> BackendFn:
     return call
 
 
-def _openai_backend(config: Config, session_id: str | None = None) -> BackendFn:
+def _openai_backend(config: Config, session_id: str | None = None, is_new: bool = False) -> BackendFn:
     """Create an OpenAI-compatible HTTP backend.
 
     Args:

@@ -21,6 +21,8 @@ packages = ["src/at_cmd"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["integration: tests that call real external services (Claude CLI, etc.)"]
+addopts = "-m 'not integration'"
 
 [dependency-groups]
 dev = [

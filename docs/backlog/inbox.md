@@ -1,0 +1,1 @@
+- save user prompts to a fix, aggregate on every X reqeusts to keep a running profile of the user, and use that profile to inform future responses. aggregation should be background, no blocking.

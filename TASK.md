@@ -4,6 +4,12 @@
 
 ## Completed
 
+- [x] Build e2e test harness with pexpect + asciinema (2026-03-24)
+  - `tests/e2e/harness.py` — E2ESession (pexpect driver) + CastRecording (asciicast v2 parser)
+  - `tests/e2e/test_basic.py` — 6 sample e2e tests (JSON mode, interactive prompt, spinner animation)
+  - `.claude/skills/terminal-session.md` — ad-hoc tmux+asciinema skill for Claude
+  - Added `pexpect` and `asciinema` to dev deps, `e2e` pytest marker, just recipes
+
 - [x] Implement JSON Response Format Migration (2026-03-23)
   - File: `docs/backlog/tactical-json-response-format.md`
   - Added `LLMResponse` dataclass and `parse_response()` to `sanitize.py` (JSON-first with text fallback)

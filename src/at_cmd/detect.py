@@ -52,7 +52,7 @@ def _detect_shell(override: str | None) -> str:
         override: Explicit shell name from --shell flag.
 
     Returns:
-        str: Shell basename (e.g., "fish", "bash", "zsh").
+        str: Shell basename (e.g., "fish", "bash", "zsh", "powershell").
     """
     if override:
         return override
@@ -62,9 +62,13 @@ def _detect_shell(override: str | None) -> str:
     if env_shell:
         return env_shell
 
-    # Fall back to $SHELL basename
+    # Fall back to $SHELL basename (set on Unix, not on Windows)
     shell_path = os.environ.get("SHELL", "")
     if shell_path:
         return Path(shell_path).name
 
-    return "bash"  # safe fallback
+    # On Windows with no $SHELL, default to powershell
+    if platform.system() == "Windows":
+        return "powershell"
+
+    return "bash"

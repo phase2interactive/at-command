@@ -123,15 +123,40 @@ def _claude_backend(
                 cmd.extend(["--session-id", session_id])
             else:
                 cmd.extend(["--resume", session_id])
-        result = subprocess.run(
-            cmd,
-            input=full_prompt,
-            capture_output=True,
-            text=True,
-            timeout=config.timeout,
-        )
+        try:
+            result = subprocess.run(
+                cmd,
+                input=full_prompt,
+                capture_output=True,
+                text=True,
+                timeout=config.timeout,
+            )
+        except subprocess.TimeoutExpired:
+            raise BackendError(
+                f"Claude CLI timed out after {config.timeout}s. "
+                f"Try increasing AT_CMD_TIMEOUT or check that the Claude CLI is responsive."
+            )
         if result.returncode != 0:
-            raise BackendError(f"Claude CLI failed: {result.stderr.strip()}")
+            stderr = result.stderr.strip()
+            # Session locked by a previous timed-out or crashed call — retry without session
+            if session_id and "already in use" in stderr:
+                cmd_retry = [claude_path, "-p", "--model", config.model]
+                try:
+                    result = subprocess.run(
+                        cmd_retry,
+                        input=full_prompt,
+                        capture_output=True,
+                        text=True,
+                        timeout=config.timeout,
+                    )
+                except subprocess.TimeoutExpired:
+                    raise BackendError(
+                        f"Claude CLI timed out after {config.timeout}s."
+                    )
+                if result.returncode != 0:
+                    raise BackendError(f"Claude CLI failed: {result.stderr.strip()}")
+            else:
+                raise BackendError(f"Claude CLI failed: {stderr}")
         return result.stdout
 
     return call

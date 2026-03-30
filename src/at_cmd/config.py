@@ -40,7 +40,7 @@ class Config:
     model: str = "sonnet"
     api_url: str = ""
     api_key: str = ""
-    timeout: int = 10
+    timeout: int = 30
     default_mode: str = "inline"
     hotkey: str = "alt+g"
     undo_key: str = "ctrl+z"

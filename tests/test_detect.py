@@ -1,6 +1,9 @@
 """Tests for at_cmd.detect."""
 
 import os
+import sys
+
+import pytest
 
 from at_cmd.detect import ShellContext, detect_context
 
@@ -29,12 +32,29 @@ class TestDetectContext:
         ctx = detect_context()
         assert ctx.shell == "fish"
 
-    def test_fallback_to_bash(self, monkeypatch):
-        """Failure case: no shell info available, defaults to bash."""
+    def test_fallback_to_bash_on_unix(self, monkeypatch):
+        """Fallback: no shell info on Unix defaults to bash."""
+        monkeypatch.delenv("AT_CMD_SHELL", raising=False)
+        monkeypatch.delenv("SHELL", raising=False)
+        monkeypatch.setattr("platform.system", lambda: "Linux")
+        ctx = detect_context()
+        assert ctx.shell == "bash"
+
+    def test_fallback_to_powershell_on_windows(self, monkeypatch):
+        """Fallback: no shell info on Windows defaults to powershell."""
+        monkeypatch.delenv("AT_CMD_SHELL", raising=False)
+        monkeypatch.delenv("SHELL", raising=False)
+        monkeypatch.setattr("platform.system", lambda: "Windows")
+        ctx = detect_context()
+        assert ctx.shell == "powershell"
+
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
+    def test_windows_no_env_detects_powershell(self, monkeypatch):
+        """Regression: on real Windows with no $SHELL, must not return bash."""
         monkeypatch.delenv("AT_CMD_SHELL", raising=False)
         monkeypatch.delenv("SHELL", raising=False)
         ctx = detect_context()
-        assert ctx.shell == "bash"
+        assert ctx.shell != "bash"
 
     def test_context_is_frozen(self):
         """Edge case: ShellContext is immutable."""

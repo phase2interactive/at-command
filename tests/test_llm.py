@@ -90,6 +90,47 @@ class TestGetBackend:
         assert captured_args["cmd"][0] == "C:\\nvm4w\\nodejs\\claude.CMD"
         assert captured_args["cmd"][0] != "claude"
 
+    def test_claude_backend_timeout_raises_backend_error(self, monkeypatch):
+        """Regression: TimeoutExpired must be caught as BackendError, not raw traceback."""
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/local/bin/claude")
+
+        def mock_run(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd=args[0], timeout=30)
+
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        config = Config(backend="claude", model="sonnet", timeout=30)
+        backend_fn = get_backend(config)
+        with pytest.raises(BackendError, match="timed out"):
+            backend_fn("system prompt", "list files")
+
+    def test_claude_backend_session_in_use_retries_without_session(self, monkeypatch):
+        """Regression: 'Session ID already in use' retries stateless."""
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/local/bin/claude")
+
+        call_count = {"n": 0}
+
+        def mock_run(*args, **kwargs):
+            call_count["n"] += 1
+            cmd = args[0]
+            if "--session-id" in cmd or "--resume" in cmd:
+                return subprocess.CompletedProcess(
+                    args=[], returncode=1,
+                    stdout="", stderr="Error: Session ID abc is already in use."
+                )
+            return subprocess.CompletedProcess(
+                args=[], returncode=0,
+                stdout="ls\nList files\n", stderr=""
+            )
+
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        config = Config(backend="claude", model="sonnet")
+        backend_fn = get_backend(config, session_id="abc", is_new=True)
+        result = backend_fn("system prompt", "list files")
+        assert result == "ls\nList files\n"
+        assert call_count["n"] == 2  # first with session, retry without
+
     def test_openai_backend_requires_api_key(self):
         """Failure case: OpenAI backend without API key."""
         config = Config(backend="openai", api_key="")

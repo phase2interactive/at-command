@@ -212,7 +212,10 @@ def translate_cmd(
     if final_cmd.strip():
         import subprocess
 
-        subprocess.run(final_cmd, shell=True)
+        if shell_ctx.shell == "powershell":
+            subprocess.run(["powershell", "-NoProfile", "-Command", final_cmd])
+        else:
+            subprocess.run(final_cmd, shell=True)
 
 
 # ── setup / init ──────────────────────────────────────────────────

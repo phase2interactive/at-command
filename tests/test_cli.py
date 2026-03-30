@@ -1,7 +1,10 @@
 """Tests for at_cmd.cli."""
 
 import json
+import subprocess
+import sys
 
+import pytest
 from click.testing import CliRunner
 
 from at_cmd.cli import main
@@ -140,3 +143,56 @@ class TestSessionFlags:
             ["--json", "--shell", "bash", "--backend", "ollama", "list", "files"],
         )
         assert "Session context requires the claude backend" in result.output
+
+
+class TestCommandExecution:
+    """Tests for how translated commands are executed."""
+
+    def test_powershell_command_uses_powershell(self, monkeypatch):
+        """Regression: PowerShell commands must run via powershell, not cmd.exe.
+
+        When at-cmd detects powershell as the shell and the user accepts a
+        command, subprocess.run must invoke it through powershell, not the
+        default shell=True (which uses cmd.exe on Windows).
+        """
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/local/bin/claude")
+        monkeypatch.setattr(
+            "at_cmd.llm.subprocess.run",
+            lambda *args, **kwargs: type(
+                "Result", (), {"returncode": 0, "stdout": "Get-ChildItem\nList files", "stderr": ""}
+            )(),
+        )
+
+        captured = {}
+        original_run = subprocess.run
+
+        def mock_exec_run(*args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return original_run("echo ok", shell=True)
+
+        monkeypatch.setattr("subprocess.run", mock_exec_run)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["--shell", "powershell", "list", "files"],
+            input="\n",  # accept the default command
+        )
+
+        # Verify the command was routed through powershell, not shell=True with cmd.exe
+        assert "args" in captured, f"Command was never executed. Output: {result.output}"
+        cmd_args = captured["args"]
+        kwargs = captured["kwargs"]
+
+        # Should NOT use shell=True (which invokes cmd.exe on Windows)
+        if kwargs.get("shell"):
+            # If shell=True is used, cmd must be wrapped: powershell -Command ...
+            cmd_str = cmd_args[0] if isinstance(cmd_args[0], str) else " ".join(cmd_args[0])
+            assert "powershell" in cmd_str.lower() or "pwsh" in cmd_str.lower(), \
+                f"PowerShell command executed via shell=True without powershell wrapper: {cmd_args}"
+        else:
+            # If shell=False, first arg should be powershell/pwsh
+            exe = cmd_args[0][0] if isinstance(cmd_args[0], list) else cmd_args[0]
+            assert "powershell" in exe.lower() or "pwsh" in exe.lower(), \
+                f"PowerShell command not routed through powershell: {cmd_args}"

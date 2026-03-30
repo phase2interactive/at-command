@@ -94,7 +94,8 @@ def _claude_backend(
     Raises:
         BackendError: If the claude CLI is not installed.
     """
-    if not shutil.which("claude"):
+    claude_path = shutil.which("claude")
+    if not claude_path:
         raise BackendError(
             "Claude CLI not found. Install it: https://docs.anthropic.com/claude-code"
         )
@@ -113,7 +114,7 @@ def _claude_backend(
             BackendError: If the CLI invocation fails.
         """
         full_prompt = f"{system_prompt}\n\nUser request: {user_prompt}"
-        cmd = ["claude", "-p", "--model", config.model]
+        cmd = [claude_path, "-p", "--model", config.model]
         if session_id:
             # Reason: --session-id creates a new conversation with that ID;
             # --resume continues an existing one. Using --resume on a session

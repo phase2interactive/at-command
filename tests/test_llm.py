@@ -49,17 +49,46 @@ class TestGetBackend:
         """Expected use: claude backend invokes subprocess correctly."""
         monkeypatch.setattr("shutil.which", lambda x: "/usr/local/bin/claude")
 
-        mock_result = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="ls -la\nList files\n", stderr=""
-        )
-        monkeypatch.setattr(
-            "subprocess.run", lambda *args, **kwargs: mock_result
-        )
+        captured_args = {}
+
+        def mock_run(*args, **kwargs):
+            captured_args["cmd"] = args[0]
+            return subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="ls -la\nList files\n", stderr=""
+            )
+
+        monkeypatch.setattr("subprocess.run", mock_run)
 
         config = Config(backend="claude", model="sonnet")
         backend_fn = get_backend(config)
         result = backend_fn("system prompt", "list files")
         assert result == "ls -la\nList files\n"
+        assert captured_args["cmd"][0] == "/usr/local/bin/claude"
+
+    def test_claude_backend_uses_resolved_path(self, monkeypatch):
+        """Regression: cmd[0] must be the resolved path, not bare 'claude'.
+
+        On Windows, shutil.which('claude') returns 'claude.CMD' which
+        subprocess.run cannot find without shell=True. Using the resolved
+        path avoids this.
+        """
+        monkeypatch.setattr("shutil.which", lambda x: "C:\\nvm4w\\nodejs\\claude.CMD")
+
+        captured_args = {}
+
+        def mock_run(*args, **kwargs):
+            captured_args["cmd"] = args[0]
+            return subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="ls\nList files\n", stderr=""
+            )
+
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        config = Config(backend="claude", model="sonnet")
+        backend_fn = get_backend(config)
+        backend_fn("system prompt", "list files")
+        assert captured_args["cmd"][0] == "C:\\nvm4w\\nodejs\\claude.CMD"
+        assert captured_args["cmd"][0] != "claude"
 
     def test_openai_backend_requires_api_key(self):
         """Failure case: OpenAI backend without API key."""

@@ -216,6 +216,105 @@ class TestPowerShell51Init:
         assert "SyntaxWarning" not in result.stderr
 
 
+# ── PowerShell command execution ─────────────────────────────────
+
+
+class TestPowerShellExecution:
+    """Verify PowerShell commands execute correctly through subprocess."""
+
+    @pytest.fixture(autouse=True)
+    def _require_pwsh(self):
+        if not shutil.which("pwsh"):
+            pytest.skip("pwsh (PowerShell 7) not installed")
+
+    def test_simple_command_executes(self):
+        """Baseline: simple PowerShell command works via subprocess."""
+        result = subprocess.run(
+            ["pwsh", "-NoProfile", "-Command", "Write-Output 'hello'"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0
+        assert "hello" in result.stdout
+
+    def test_pipeline_command_executes(self):
+        """Pipes must work through our invocation path."""
+        result = subprocess.run(
+            ["pwsh", "-NoProfile", "-Command",
+             "Get-ChildItem | Select-Object -First 1 | ForEach-Object { $_.Name }"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0
+
+    def test_command_with_commas_executes(self):
+        """Commas in arguments must not break subprocess invocation."""
+        result = subprocess.run(
+            ["pwsh", "-NoProfile", "-Command",
+             "Get-ChildItem | Sort-Object -Property Name, Length"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0
+
+    def test_command_with_semicolons_executes(self):
+        """Semicolons (statement separators) must work."""
+        result = subprocess.run(
+            ["pwsh", "-NoProfile", "-Command",
+             "$a = 1; $b = 2; Write-Output ($a + $b)"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0
+        assert "3" in result.stdout
+
+
+class TestPowerShellDetection:
+    """Verify we use the right PowerShell executable."""
+
+    @pytest.mark.skipif(
+        shutil.which("pwsh") is None, reason="pwsh not installed"
+    )
+    def test_cli_uses_pwsh_when_available(self, monkeypatch):
+        """Regression: must prefer pwsh over powershell.exe when available."""
+        _real_which = shutil.which
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/local/bin/claude" if x == "claude" else _real_which(x))
+        monkeypatch.setattr(
+            "at_cmd.llm.subprocess.run",
+            lambda *args, **kwargs: type(
+                "Result", (), {"returncode": 0, "stdout": "Write-Output hi\nTest", "stderr": ""}
+            )(),
+        )
+
+        captured = {}
+        original_run = subprocess.run
+
+        def mock_exec_run(*args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return original_run("echo ok", shell=True)
+
+        monkeypatch.setattr("subprocess.run", mock_exec_run)
+
+        from click.testing import CliRunner
+        from at_cmd.cli import main
+
+        runner = CliRunner()
+        runner.invoke(
+            main,
+            ["--shell", "powershell", "test"],
+            input="\n",
+        )
+
+        assert "args" in captured
+        exe = captured["args"][0][0] if isinstance(captured["args"][0], list) else captured["args"][0]
+        assert "pwsh" in exe.lower() or "powershell" in exe.lower()
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 

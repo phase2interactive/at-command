@@ -1,6 +1,7 @@
 """Tests for at_cmd.cli."""
 
 import json
+import shutil
 import subprocess
 import sys
 
@@ -155,7 +156,8 @@ class TestCommandExecution:
         command, subprocess.run must invoke it through powershell, not the
         default shell=True (which uses cmd.exe on Windows).
         """
-        monkeypatch.setattr("shutil.which", lambda x: "/usr/local/bin/claude")
+        _real_which = shutil.which
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/local/bin/claude" if x == "claude" else _real_which(x))
         monkeypatch.setattr(
             "at_cmd.llm.subprocess.run",
             lambda *args, **kwargs: type(
@@ -185,14 +187,10 @@ class TestCommandExecution:
         cmd_args = captured["args"]
         kwargs = captured["kwargs"]
 
-        # Should NOT use shell=True (which invokes cmd.exe on Windows)
-        if kwargs.get("shell"):
-            # If shell=True is used, cmd must be wrapped: powershell -Command ...
-            cmd_str = cmd_args[0] if isinstance(cmd_args[0], str) else " ".join(cmd_args[0])
-            assert "powershell" in cmd_str.lower() or "pwsh" in cmd_str.lower(), \
-                f"PowerShell command executed via shell=True without powershell wrapper: {cmd_args}"
-        else:
-            # If shell=False, first arg should be powershell/pwsh
-            exe = cmd_args[0][0] if isinstance(cmd_args[0], list) else cmd_args[0]
-            assert "powershell" in exe.lower() or "pwsh" in exe.lower(), \
-                f"PowerShell command not routed through powershell: {cmd_args}"
+        # Must NOT use shell=True (which invokes cmd.exe on Windows)
+        assert not kwargs.get("shell"), \
+            "PowerShell command should not use shell=True (routes through cmd.exe)"
+        # First arg should be a list starting with powershell/pwsh
+        exe = cmd_args[0][0] if isinstance(cmd_args[0], list) else cmd_args[0]
+        assert "powershell" in exe.lower() or "pwsh" in exe.lower(), \
+            f"PowerShell command not routed through powershell: {cmd_args}"

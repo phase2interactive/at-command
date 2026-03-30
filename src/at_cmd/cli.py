@@ -213,7 +213,8 @@ def translate_cmd(
         import subprocess
 
         if shell_ctx.shell == "powershell":
-            subprocess.run(["powershell", "-NoProfile", "-Command", final_cmd])
+            ps_exe = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
+            subprocess.run([ps_exe, "-NoProfile", "-Command", final_cmd])
         else:
             subprocess.run(final_cmd, shell=True)
 

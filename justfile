@@ -64,6 +64,14 @@ record SESSION_NAME="adhoc":
 replay SESSION_NAME="adhoc":
     asciinema play "recordings/{{SESSION_NAME}}.cast"
 
+# Run shell integration tests in Docker (bash, zsh, fish)
+test-shells *ARGS:
+    docker compose -f tests/shells/docker-compose.yml run --rm --build {{ARGS}} all
+
+# Run a single shell's integration tests in Docker (e.g. just test-shell bash)
+test-shell SHELL:
+    docker compose -f tests/shells/docker-compose.yml run --rm --build {{SHELL}}
+
 # Translate a natural language request (for quick testing)
 translate +REQUEST:
     uv run at-cmd {{REQUEST}}

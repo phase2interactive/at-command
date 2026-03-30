@@ -2,7 +2,10 @@
 
 import json
 import os
-import readline
+try:
+    import readline
+except ImportError:
+    readline = None  # Windows - fallback to plain input()
 import shutil
 import subprocess
 import sys
@@ -49,16 +52,16 @@ def _show_status() -> None:
     ctx = detect_context()
     installed = _shell_integration_installed()
 
-    click.echo("at-cmd — natural language to shell commands\n")
+    click.echo("at-cmd -- natural language to shell commands\n")
 
     if installed:
-        click.echo("  ✓ Shell integration is active.\n")
+        click.echo("  [ok] Shell integration is active.\n")
         click.echo("  Usage:")
         click.echo("    @ find large jpg files      translate and edit")
         click.echo("    @ list running docker containers")
         click.echo(f"\n  Shell: {ctx.shell}  |  OS: {ctx.os_name}")
     else:
-        click.echo("  ✗ Shell integration is not installed.\n")
+        click.echo("  [!!] Shell integration is not installed.\n")
         click.echo("  Run the following to set it up:\n")
         click.echo("    at-cmd setup")
 
@@ -193,11 +196,15 @@ def translate_cmd(
         click.echo(f"  \033[2m# {description}\033[0m", err=True)
 
     try:
-        readline.set_startup_hook(lambda: readline.insert_text(command))
-        try:
-            final_cmd = input("\033[32m\u276f \033[0m")
-        finally:
-            readline.set_startup_hook()
+        if readline is not None:
+            readline.set_startup_hook(lambda: readline.insert_text(command))
+            try:
+                final_cmd = input("\033[32m> \033[0m")
+            finally:
+                readline.set_startup_hook()
+        else:
+            click.echo(f"  \033[32m> \033[0m{command}", err=True)
+            final_cmd = input("\033[32m> \033[0m") or command
     except (KeyboardInterrupt, EOFError):
         click.echo("", err=True)
         sys.exit(130)
@@ -226,7 +233,7 @@ _EVAL_LINES: dict[str, str] = {
     "bash": 'eval "$(at-cmd init bash)"',
     "zsh": 'eval "$(at-cmd init zsh)"',
     "fish": "at-cmd init fish | source",
-    "powershell": "Invoke-Expression (at-cmd init powershell)",
+    "powershell": "Invoke-Expression (at-cmd init powershell | Out-String)",
 }
 
 

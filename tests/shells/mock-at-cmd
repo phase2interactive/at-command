@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Mock at-cmd binary that returns a fixed JSON response.
+# Supports --json flag and passes through to simulate real behavior.
+
+# If "init" subcommand, delegate to real at-cmd
+if [[ "$1" == "init" ]]; then
+    exec at-cmd "$@"
+fi
+
+# For translate requests, return a canned response
+if [[ " $* " == *"--json"* ]]; then
+    echo '{"command":"echo hello world","description":"prints hello world"}'
+else
+    echo "echo hello world"
+    echo "# prints hello world"
+fi

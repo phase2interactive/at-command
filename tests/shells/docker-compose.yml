@@ -1,0 +1,26 @@
+services:
+  # Run all shell tests (bash, zsh, fish)
+  all:
+    build:
+      context: ../..
+      dockerfile: tests/shells/Dockerfile
+    # Runs run_all.sh by default (ENTRYPOINT)
+
+  # Run individual shell tests
+  bash:
+    build:
+      context: ../..
+      dockerfile: tests/shells/Dockerfile
+    entrypoint: ["/tests/test_bash.sh"]
+
+  zsh:
+    build:
+      context: ../..
+      dockerfile: tests/shells/Dockerfile
+    entrypoint: ["/tests/test_zsh.sh"]
+
+  fish:
+    build:
+      context: ../..
+      dockerfile: tests/shells/Dockerfile
+    entrypoint: ["/tests/test_fish.sh"]

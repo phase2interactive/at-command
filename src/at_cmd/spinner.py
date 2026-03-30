@@ -5,8 +5,8 @@ import threading
 import time
 
 
-# Braille dot spinner — smooth and compact
-_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+# ASCII spinner -- works on all terminals and codepages
+_FRAMES = ["|", "/", "-", "\\"]
 _INTERVAL = 0.08
 
 

@@ -1,0 +1,6 @@
+# Lean build context — only ship what the container needs
+__pycache__
+*.pyc
+.git
+.ruff_cache
+recordings/
